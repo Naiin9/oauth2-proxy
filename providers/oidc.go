@@ -49,6 +49,9 @@ func NewOIDCProvider(p *ProviderData, opts options.OIDCOptions) *OIDCProvider {
 	p.setProviderDefaults(oidcProviderDefaults)
 	p.getAuthorizationHeaderFunc = makeOIDCHeader
 
+	// Set allowed custom claims for extraction
+	p.AllowedCustomClaims = opts.AllowedCustomClaims
+
 	return &OIDCProvider{
 		ProviderData: p,
 		SkipNonce:    ptr.Deref(opts.InsecureSkipNonce, options.DefaultInsecureSkipNonce),
@@ -196,6 +199,10 @@ func (p *OIDCProvider) redeemRefreshToken(ctx context.Context, s *sessions.Sessi
 		s.User = newSession.User
 		s.Groups = newSession.Groups
 		s.PreferredUsername = newSession.PreferredUsername
+		// Update custom claims if present
+		if len(newSession.CustomClaims) > 0 {
+			s.CustomClaims = newSession.CustomClaims
+		}
 	}
 
 	s.AccessToken = newSession.AccessToken

@@ -85,7 +85,7 @@ func (l *LegacyOptions) ToOptions() (*Options, error) {
 	}
 	l.Options.UpstreamServers = upstreams
 
-	l.Options.InjectRequestHeaders, l.Options.InjectResponseHeaders = l.LegacyHeaders.convert()
+	l.Options.InjectRequestHeaders, l.Options.InjectResponseHeaders = l.LegacyHeaders.convert(l.LegacyProvider.OIDCAllowedCustomClaims)
 
 	l.Options.Server, l.Options.MetricsServer = l.LegacyServer.convert()
 
@@ -229,8 +229,8 @@ func legacyHeadersFlagSet() *pflag.FlagSet {
 
 // convert takes the legacy request/response headers and converts them to
 // the new format for InjectRequestHeaders and InjectResponseHeaders
-func (l *LegacyHeaders) convert() ([]Header, []Header) {
-	return l.getRequestHeaders(), l.getResponseHeaders()
+func (l *LegacyHeaders) convert(allowedClaims []string) ([]Header, []Header) {
+	return l.getRequestHeaders(), l.getResponseHeaders(allowedClaims)
 }
 
 func (l *LegacyHeaders) getRequestHeaders() []Header {
@@ -261,13 +261,17 @@ func (l *LegacyHeaders) getRequestHeaders() []Header {
 	return requestHeaders
 }
 
-func (l *LegacyHeaders) getResponseHeaders() []Header {
+func (l *LegacyHeaders) getResponseHeaders(allowedClaims []string) []Header {
 	responseHeaders := []Header{}
 
 	if l.SetXAuthRequest {
 		responseHeaders = append(responseHeaders, getXAuthRequestHeaders()...)
 		if l.PassAccessToken {
 			responseHeaders = append(responseHeaders, getXAuthRequestAccessTokenHeader())
+		}
+		// Add custom claims headers
+		if len(allowedClaims) > 0 {
+			responseHeaders = append(responseHeaders, getCustomClaimHeaders(allowedClaims)...)
 		}
 	}
 
@@ -470,6 +474,36 @@ func getXAuthRequestAccessTokenHeader() Header {
 	}
 }
 
+// getCustomClaimHeaders generates X-Auth-Request-* headers for custom claims
+// Claim names are converted to Title-Case for header names
+func getCustomClaimHeaders(allowedClaims []string) []Header {
+	headers := []Header{}
+
+	for _, claim := range allowedClaims {
+		if claim == "" {
+			continue
+		}
+
+		// Convert claim name to Title-Case for header name
+		// e.g., "department" -> "X-Auth-Request-Department"
+		headerName := "X-Auth-Request-" + strings.Title(claim)
+
+		headers = append(headers, Header{
+			Name:                 headerName,
+			PreserveRequestValue: ptr.To(false),
+			Values: []HeaderValue{
+				{
+					ClaimSource: &ClaimSource{
+						Claim: claim,
+					},
+				},
+			},
+		})
+	}
+
+	return headers
+}
+
 type LegacyServer struct {
 	MetricsAddress       string   `flag:"metrics-address" cfg:"metrics_address"`
 	MetricsSecureAddress string   `flag:"metrics-secure-address" cfg:"metrics_secure_address"`
@@ -545,6 +579,7 @@ type LegacyProvider struct {
 	OIDCAudienceClaims                 []string `flag:"oidc-audience-claim" cfg:"oidc_audience_claims"`
 	OIDCExtraAudiences                 []string `flag:"oidc-extra-audience" cfg:"oidc_extra_audiences"`
 	OIDCPublicKeyFiles                 []string `flag:"oidc-public-key-file" cfg:"oidc_public_key_files"`
+	OIDCAllowedCustomClaims            []string `flag:"oidc-allowed-custom-claims" cfg:"oidc_allowed_custom_claims"`
 	LoginURL                           string   `flag:"login-url" cfg:"login_url"`
 	AuthRequestResponseMode            string   `flag:"auth-request-response-mode" cfg:"auth_request_response_mode"`
 	RedeemURL                          string   `flag:"redeem-url" cfg:"redeem_url"`
@@ -606,6 +641,7 @@ func legacyProviderFlagSet() *pflag.FlagSet {
 	flagSet.StringSlice("oidc-audience-claim", OIDCAudienceClaims, "which OIDC claims are used as audience to verify against client id")
 	flagSet.StringSlice("oidc-extra-audience", []string{}, "additional audiences allowed to pass audience verification")
 	flagSet.StringSlice("oidc-public-key-file", []string{}, "path to public key file in PEM format to use for verifying JWT tokens (may be given multiple times)")
+	flagSet.StringSlice("oidc-allowed-custom-claims", []string{}, "custom claim names to extract from token and inject as X-Auth-Request-* headers (may be given multiple times)")
 	flagSet.String("login-url", "", "Authentication endpoint")
 	flagSet.String("redeem-url", "", "Token redemption endpoint")
 	flagSet.String("profile-url", "", "Profile access endpoint")
@@ -727,6 +763,7 @@ func (l *LegacyProvider) convert() (Providers, error) {
 		AudienceClaims:                 l.OIDCAudienceClaims,
 		ExtraAudiences:                 l.OIDCExtraAudiences,
 		PublicKeyFiles:                 l.OIDCPublicKeyFiles,
+		AllowedCustomClaims:            l.OIDCAllowedCustomClaims,
 	}
 
 	// Support for legacy configuration option

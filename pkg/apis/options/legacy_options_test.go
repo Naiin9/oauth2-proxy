@@ -495,7 +495,7 @@ var _ = Describe("Legacy Options", func() {
 
 		DescribeTable("should convert to injectRequestHeaders",
 			func(in legacyHeadersTableInput) {
-				requestHeaders, responseHeaders := in.legacyHeaders.convert()
+				requestHeaders, responseHeaders := in.legacyHeaders.convert([]string{})
 				Expect(requestHeaders).To(ConsistOf(in.expectedRequestHeaders))
 				Expect(responseHeaders).To(ConsistOf(in.expectedResponseHeaders))
 			},

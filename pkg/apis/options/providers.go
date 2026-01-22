@@ -318,6 +318,11 @@ type OIDCOptions struct {
 	// ExtraAudiences is a list of additional audiences that are allowed
 	// to pass verification in addition to the client id.
 	ExtraAudiences []string `yaml:"extraAudiences,omitempty"`
+	// AllowedCustomClaims is a whitelist of custom claim names to extract from the token
+	// and store in the session's CustomClaims map. Claims will be automatically
+	// injected as X-Auth-Request-<ClaimName> headers when SetXAuthRequest is enabled.
+	// default set to empty (no custom claims extracted)
+	AllowedCustomClaims []string `yaml:"allowedCustomClaims,omitempty"`
 }
 
 type LoginGovOptions struct {

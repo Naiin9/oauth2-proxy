@@ -28,6 +28,10 @@ type SessionState struct {
 	Groups            []string `msgpack:"g,omitempty"`
 	PreferredUsername string   `msgpack:"pu,omitempty"`
 
+	// CustomClaims contains additional claims extracted from the token
+	// based on the AllowedClaims configuration
+	CustomClaims map[string][]string `msgpack:"cc,omitempty"`
+
 	// Internal helpers, not serialized
 	Clock     func() time.Time `msgpack:"-"` // override for time.Now, for testing
 	Lock      Lock             `msgpack:"-"`
@@ -127,6 +131,9 @@ func (s *SessionState) String() string {
 	if len(s.Groups) > 0 {
 		o += fmt.Sprintf(" groups:%v", s.Groups)
 	}
+	if len(s.CustomClaims) > 0 {
+		o += fmt.Sprintf(" custom_claims:%v", s.CustomClaims)
+	}
 	return o + "}"
 }
 
@@ -156,6 +163,14 @@ func (s *SessionState) GetClaim(claim string) []string {
 	case "preferred_username":
 		return []string{s.PreferredUsername}
 	default:
+		// Check if the claim exists in CustomClaims
+		if s.CustomClaims != nil {
+			if values, ok := s.CustomClaims[claim]; ok {
+				result := make([]string, len(values))
+				copy(result, values)
+				return result
+			}
+		}
 		return []string{}
 	}
 }

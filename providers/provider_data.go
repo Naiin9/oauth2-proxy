@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -49,6 +50,7 @@ type ProviderData struct {
 	UserClaim                string
 	EmailClaim               string
 	GroupsClaim              string
+	AllowedCustomClaims      []string
 	Verifier                 internaloidc.IDTokenVerifier
 	SkipClaimsFromProfileURL bool
 
@@ -284,7 +286,70 @@ func (p *ProviderData) buildSessionFromClaims(rawIDToken, accessToken string) (*
 		}
 	}
 
+	// Extract custom claims if configured
+	if len(p.AllowedCustomClaims) > 0 {
+		ss.CustomClaims = make(map[string][]string)
+
+		for _, claimName := range p.AllowedCustomClaims {
+			if claimName == "" {
+				continue
+			}
+
+			// Try to extract the claim value
+			var claimValue interface{}
+			exists, err := extractor.GetClaimInto(claimName, &claimValue)
+			if err != nil {
+				logger.Printf("Warning: failed to extract custom claim %q: %v", claimName, err)
+				continue
+			}
+
+			if !exists {
+				continue
+			}
+
+			// Convert claim value to string slice
+			values := convertClaimToStringSlice(claimValue)
+			if len(values) > 0 {
+				ss.CustomClaims[claimName] = values
+			}
+		}
+	}
+
 	return ss, nil
+}
+
+// convertClaimToStringSlice converts various claim value types to []string
+func convertClaimToStringSlice(value interface{}) []string {
+	if value == nil {
+		return nil
+	}
+
+	switch v := value.(type) {
+	case string:
+		return []string{v}
+	case []string:
+		return v
+	case []interface{}:
+		// Convert each element to string
+		result := make([]string, 0, len(v))
+		for _, item := range v {
+			if str, ok := item.(string); ok {
+				result = append(result, str)
+			} else {
+				// For non-string items, convert to JSON
+				result = append(result, fmt.Sprintf("%v", item))
+			}
+		}
+		return result
+	default:
+		// For complex objects, marshal to JSON string
+		jsonBytes, err := json.Marshal(v)
+		if err == nil {
+			return []string{string(jsonBytes)}
+		}
+		// Fallback to string representation
+		return []string{fmt.Sprintf("%v", v)}
+	}
 }
 
 func (p *ProviderData) getClaimExtractor(rawIDToken, accessToken string) (util.ClaimExtractor, error) {
